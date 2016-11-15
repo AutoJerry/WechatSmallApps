@@ -1,4 +1,5 @@
 import DataRepository from 'DataRepository';
+import {promiseHandle} from '../utils/util';
 
 /**
  * 数据业务类
@@ -21,15 +22,14 @@ class DataSerivce {
      */
     save() {
         if (this._checkProps()) {
-            DataRepository.addData({
+            return DataRepository.addData({
                 title: this.title,
                 content: this.content,
                 year: this.year,
                 month: this.month,
                 date: this.date,
                 level: this.level,
-                addDate: new Date().getTime(),
-                status: 1
+                addDate: new Date().getTime()
             });
         }
     }
@@ -38,14 +38,27 @@ class DataSerivce {
      * 获取所有事项数据
      */
     static findAll() {
-        return DataRepository.findAllData();
+        return DataRepository.findAllData().then((data) => {
+            return data.data ? data.data : [];
+        });
+    }
+
+    /**
+     * 通过id获取事项
+     */
+    static findById(id) {
+        return DataRepository.findBy((item) => {
+            return item['_id'] == id;
+        }).then((items) => {
+            return (items && items.length > 0) ? items[0] : null;
+        }); 
     }
 
     /**
      * 根据id删除事项数据
      */
     delete() {
-        DataRepository.removeData(this.id);
+        return DataRepository.removeData(this.id);
     }
 
     /**
@@ -53,7 +66,7 @@ class DataSerivce {
      * @param {Array} ids 事项Id集合
      */
     static deleteRange(...ids) {
-        DataRepository.removeRange(ids);
+        return DataRepository.removeRange(ids);
     }
 
     /**
@@ -63,12 +76,11 @@ class DataSerivce {
      */
     static findByDate(date) {
         if (!date) return [];
-        let data = DataRepository.findBy((item) => {
-            return item['date'] == date.getDate() && 
-                item['month'] == date.getMonth() && 
+        return DataRepository.findBy((item) => {
+            return item && item['date'] == date.getDate() &&
+                item['month'] == date.getMonth() &&
                 item['year'] == date.getFullYear();
-        });
-        return data;
+        }).then((data) => data);
     }
 
     _checkProps() {

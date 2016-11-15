@@ -1,11 +1,6 @@
-import DataService from  '../../services/DataService';
-import {LEVEL} from '../../services/Config';
-import {promiseHandle, log} from '../../utils/util';
-
-// let t = DataService.findAll();
-// console.log(t);
-
-// getApp().getUserInfo((d) => { console.log('sss', d) });
+import DataService from  '../../datas/DataService';
+import {LEVEL} from '../../datas/Config';
+import {promiseHandle, log, formatNumber} from '../../utils/util';
 
 Page({
   data: {
@@ -64,22 +59,15 @@ Page({
   dateClickEvent(e) {
     const {year, month, date} = e.currentTarget.dataset;
     const {data} = this.data;
-    // dates,
-    // tmp,
-    // selectDateText
-    ;
+    let selectDateText = '';
 
-    // data[ 'selected' ][ 'year' ] = year;
-    // data[ 'selected' ][ 'month' ] = month;
-    // data[ 'selected' ][ 'date' ] = date;
+    data['selected']['year'] = year;
+    data['selected']['month'] = month;
+    data['selected']['date'] = date;
+    
+    this.setData({ data: data });
 
-    // selectDateText = year + '年' + month + '月' + date + '日';
-    // this.setData( { data: data, selectDateText: selectDateText });
-
-    if (!(data['currentYear'] == year && data['currentMonth'] == month && data['currentDate'] == date)) {
-      changeDate.call(this, new Date(year, parseInt(month) - 1, date));
-    }
-
+    changeDate.call(this, new Date(year, parseInt(month) - 1, date));
   },
 
   showUpdatePanelEvent() {
@@ -101,14 +89,18 @@ Page({
     let _this = this;
     //如果不是编辑勾选模式下才生效
     if (!isEditMode) {
-      const itemList = ['删除'];
+      const itemList = ['详情', '删除'];
       promiseHandle(wx.showActionSheet, { itemList: itemList, itemColor: '#2E2E3B' })
         .then((res) => {
           if (!res.cancel) {
             switch (itemList[res.tapIndex]) {
+              case '详情':
+                wx.navigateTo({ url: '../detail/detail?id=' + id });
+                break;
               case '删除':
-                new DataService({ _id: id }).delete();
-                loadItemListData.call(_this);
+                new DataService({ _id: id }).delete().then(() => {
+                  loadItemListData.call(_this);
+                });
                 break;
             }
           }
@@ -131,6 +123,7 @@ Page({
   //事项内容多行文本域变化事件
   todoTextAreaChangeEvent(e) {
     const {value} = e.detail;
+    console.log('textarea', value);
     this.setData({ todoTextAreaValue: value });
   },
 
@@ -143,25 +136,27 @@ Page({
   // 保存事项数据
   saveDataEvent() {
     const {todoInputValue, todoTextAreaValue, levelSelectedValue} = this.data;
-    const {showYear, showMonth, showDate} = this.data.data;
+    const {year, month, date} = this.data.data.selected;
     console.log(todoInputValue, todoTextAreaValue);
     if (todoInputValue !== '') {
-      new DataService({
+      let promise = new DataService({
         title: todoInputValue,
         content: todoTextAreaValue,
         level: levelSelectedValue,
-        year: showYear,
-        month: parseInt(this.data.data.showMonth) - 1,
-        date: showDate
+        year: year,
+        month: parseInt(month) - 1,
+        date: date
       }).save();
+      promise && promise.then(() => {
+        //清空表单
+        this.setData({
+          todoTextAreaValue: '',
+          levelSelectedValue: '',
+          todoInputValue: ''
+        });
+        loadItemListData.call(this);
+      })
       closeUpdatePanel.call(this);
-      loadItemListData.call(this);
-      //清空表单
-      this.setData({
-        todoTextAreaValue: '',
-        levelSelectedValue: '',
-        todoInputValue: ''
-      });
     } else {
       showModal.call(this, '请填写事项内容');
     }
@@ -171,13 +166,19 @@ Page({
   removeRangeTapEvent() {
     let {itemList} = this.data;
     if (!itemList) return;
-
+    let _this = this;
     wx.showModal({
       title: '提示',
       content: '确定要删除选定的事项？',
       success: (res) => {
         if (res.confirm) {
-
+          DataService.deleteRange(this.data.editItemList).then(() => {
+            loadItemListData.call(_this);
+          });
+          _this.setData({
+            editItemList: [],
+            isEditMode: false
+          });
         }
       }
     });
@@ -185,9 +186,13 @@ Page({
 
   listItemClickEvent(e) {
     const {isEditMode} = this.data;
-    if (!isEditMode) return; //不是编辑勾选模式下，选择无效
-
     const {id} = e.currentTarget.dataset;
+
+    if (!isEditMode) {
+      this.listItemLongTapEvent(e); //由于元素的长按和点击事件有冲突，暂时合并在一起，直接调用长按事件
+      return;
+    }
+
     let data = this.data.itemList || [];
     let editItemList = this.data.editItemList || [];
     const index = data.findIndex((item) => {
@@ -200,12 +205,11 @@ Page({
         return item == id;
       });
       if (data[index]['checked']) {
-        console.log(tIndx);
         tIndx >= 0 || editItemList.push(id);
       } else {
         editItemList.splice(tIndx, 1);
       }
-      this.setData({ itemList: data });
+      this.setData({ itemList: data, editItemList: editItemList });
     }
   },
 
@@ -273,9 +277,13 @@ function closeUpdatePanel() {
  * 加载事项列表数据
  */
 function loadItemListData() {
-  const {showYear, showMonth, showDate} = this.data.data;
-  const data = DataService.findByDate(new Date(Date.parse([showYear, showMonth, showDate].join('-'))));
-  this.setData({ itemList: data });
+  const {year, month, date} = this.data.data.selected;
+  let _this = this;
+  DataService.findByDate(new Date(Date.parse([year, month, date].join('-')))).then((data) => {
+    console.log(data);
+    _this.setData({ itemList: data });
+  });
+
 }
 
 /**
@@ -312,11 +320,11 @@ function changeDate(targetDate) {
   showYear = date.getFullYear();
   showDay = date.getDay();
 
-  showMonthDateCount = new Date(showDate, showMonth, 0).getDate();
+  showMonthDateCount = new Date(showYear, showMonth, 0).getDate();
   date.setDate(1);
-  showMonthFirstDateDay = date.getDay();
+  showMonthFirstDateDay = date.getDay(); //当前显示月份第一天的星期
   date.setDate(showMonthDateCount);
-  showMonthLastDateDay = date.getDay();
+  showMonthLastDateDay = date.getDay(); //当前显示月份最后一天的星期  
 
   let beforeDayCount = 0,
     beforeYear, //上页月年份
@@ -327,13 +335,13 @@ function changeDate(targetDate) {
     beforeMonthDayCount = 0; //上页月份总天数
 
   //上一个月月份
-  beforMonth = showMonth == 1 ? 12 : showMonth - 1;
+  beforMonth = showMonth === 1 ? 12 : showMonth - 1;
   //上一个月年份
-  beforeYear = showMonth == 1 ? showYear - 1 : showYear;
+  beforeYear = showMonth === 1 ? showYear - 1 : showYear;
   //下个月月份
-  afterMonth = showMonth == 12 ? 1 : showMonth + 1;
+  afterMonth = showMonth === 12 ? 1 : showMonth + 1;
   //下个月年份
-  afterYear = showMonth == 12 ? showYear + 1 : showYear;
+  afterYear = showMonth === 12 ? showYear + 1 : showYear;
 
   //获取上一页的显示天数
   if (showMonthFirstDateDay != 0)
@@ -350,9 +358,10 @@ function changeDate(targetDate) {
   //如果天数不够6行，则补充完整
   let tDay = showMonthDateCount + beforeDayCount + afterDayCount;
   if (tDay <= 35)
-    afterDayCount += (42 - tDay);
+    afterDayCount += (42 - tDay); //6行7列 = 42
 
-  let selected = this.data.data['selected'] || {};
+  let selected = this.data.data['selected'] || { year: showYear, month: showMonth, date: showDate };
+  let selectDateText = selected.year + '年' + formatNumber(selected.month) + '月' + formatNumber(selected.date) + '日';
 
   data = {
     currentDate: currentDateObj.getDate(), //当天日期第几天
@@ -366,7 +375,8 @@ function changeDate(targetDate) {
     beforMonth: beforMonth, //当前页上一页的月份
     afterYear: afterYear, //当前页下一页的年份
     afterMonth: afterMonth, //当前页下一页的月份
-    selected: selected //当前被选择的日期信息
+    selected: selected,
+    selectDateText: selectDateText
   };
 
   let dates = [];
@@ -388,8 +398,7 @@ function changeDate(targetDate) {
   for (let cIdx = 1; cIdx <= showMonthDateCount; cIdx++) {
     dates.push({
       _id: _id,
-      active: showDate == cIdx,
-      //active: ( selected[ 'year' ] == showYear && selected[ 'month' ] == showMonth && selected[ 'date' ] == cIdx ), //选中状态判断
+      active: (selected['year'] == showYear && selected['month'] == showMonth && selected['date'] == cIdx), //选中状态判断
       year: showYear,
       month: showMonth,
       date: cIdx
@@ -410,5 +419,8 @@ function changeDate(targetDate) {
   }
 
   data.dates = dates;
+
+
   this.setData({ data: data, pickerDateValue: showYear + '-' + showMonth });
+  loadItemListData.call(this);
 }

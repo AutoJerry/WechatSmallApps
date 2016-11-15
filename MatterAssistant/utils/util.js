@@ -15,6 +15,11 @@ function formatNumber(n) {
   return n[1] ? n : '0' + n
 }
 
+function getDateStr(date) {
+  if (!date) return '';
+  return date.getFullYear() + '年' +  (date.getMonth() + 1) + '月' +date.getDate() + '日';
+}
+
 /**
  * 生成GUID序列号
  * @returns {string} GUID
@@ -40,10 +45,16 @@ function log(msg) {
   wx.setStorageSync('logs', logs)
 }
 
+/**
+ * @param {Function} func 接口
+ * @param {Object} options 接口参数
+ * @returns {Promise} Promise对象
+*/
 function promiseHandle(func, options) {
-  if (typeof func !== 'function') return;
   options = options || {};
   return new Promise((resolve, reject) => {
+    if (typeof func !== 'function')
+        reject();
     options.success = resolve;
     options.fail = reject;
     func(options);
@@ -54,5 +65,7 @@ module.exports = {
   formatTime: formatTime,
   guid: guid,
   log: log,
-  promiseHandle: promiseHandle
+  promiseHandle: promiseHandle,
+  getDateStr: getDateStr,
+  formatNumber: formatNumber
 }
