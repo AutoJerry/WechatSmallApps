@@ -45,21 +45,16 @@ class DataRepository {
         if (!range) return;
         return DataRepository.findAllData().then(data => {
             if (!data) return;
-            let indexs = [];
-            for (let rIdx = 0, rLen = range.length; rIdx < rLen; rIdx++) {
-                for (let idx = 0, len = data.length; idx < len; idx++) {
-                    if (data[idx] && data[idx]['_id'] == range[rIdx]) {
-                        indexs.push(idx);
+            
+           for(let idx = data.length -1; idx >= 0; idx--){
+                for(let rIdx = 0, rlen = range.length; rIdx < rlen; rIdx++){
+                    if(data[idx] && data[idx]['_id'] == range[rIdx]){
+                        data.splice(idx, 1);
                         break;
                     }
                 }
             }
-            
-            let tmpIdx = 0;
-            indexs.forEach(item => {
-                data.splice(item - tmpIdx, 1);
-                tmpIdx++;
-            });
+
             wx.setStorage({key: Config.ITEMS_SAVE_KEY, data: data});
         });
         
